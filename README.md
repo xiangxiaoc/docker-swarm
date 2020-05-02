@@ -1,23 +1,24 @@
-# 概述
+# Overview
 
-Docker Swarm 是 Docker 官方的集群编排方案。已经集成在 > 1.12 的 docker 版本里了。当然默认是未启用状态，启用一下也就是一条命令的事，下面提到的脚本也支持与 `docker swarm` 命令相关的集群管理操作。 
+Docker Swarm is Docker's official cluster orchestration solution. It has been integrated in the docker version> 1.12. Of course, it is not enabled by default. It is a command to enable it. The script mentioned below also supports cluster management operations related to the `docker swarm` command.
 
-这里是一些经过测试的容器化服务编排项目。Docker 将一组 Servives 称之为一个栈 (Stack) 。那么编排一个项目就是创建一个 Stack 包含多个 Services。Services 又是 Docker 抽象出来的一个前端概念，后端可以有多个 Containers 来提供实际的服务处理前端的请求。
+Here are some tested containerized service orchestration projects. Docker refers to a group of Services as a stack. So orchestrating a project is to create a Stack containing multiple Services. Services is also a front-end concept abstracted by Docker. The back-end can have multiple Containers to provide actual services to handle front-end requests.
 
-基本上是遵循 Docker 倡导的 "编码一次，到处运行"。 熟悉 `docker stack` 命令的老手可以直接取用需要的 YAML 文件。 相关的注意事项，如果有的话，会在其对应的目录内补充说明。
+Basically follow the "coding once, run everywhere" advocated by Docker. Veterans familiar with the `docker stack` command can directly access the required YAML files. Relevant notes, if any, will be supplemented with explanations in their corresponding catalogs.
 
-## docker-swarm.sh 脚本
+## docker-swarm.sh script
 
-本项目提供了一个 Shell 脚本，通过交互的方式，实现了常用的操作。用来快速体验 Docker 官方的容器集群编排方案非常合适。
+This project provides a shell script that implements common operations through interaction. It is very suitable to quickly experience Docker's official container cluster orchestration solution.
 
 
-## Compose File 格式
+## Compose File format
 
-对，还是基于一个 Compose 文件就可以编排部署。不过 Compose 文件的格式版本都是 3.x 以上，这是 Swarm Mode 下部署容器所必需的。升级到 3.x 相比 2.x 的变化主要就是增加了 `deploy:` 配置选项。
+Yes, orchestration can be arranged based on a Compose file. However, the format versions of Compose files are all above 3.x, which is necessary for deploying containers in Swarm Mode. The change from upgrading to 3.x compared to 2.x is mainly the addition of `deploy:` configuration option.
 
-参阅详细的服务配置：
+See detailed service configuration:
 https://docs.docker.com/compose/compose-file/compose-versioning/#compatibility-matrix
 
-## 小贴士
+## Docker Official Document
 
-中国区 registry mirror https://registry.docker-cn.com
+About `docker stack` command:
+https://docs.docker.com/engine/reference/commandline/stack/
