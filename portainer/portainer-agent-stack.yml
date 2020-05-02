@@ -3,7 +3,7 @@ version: '3.2'
 services:
 
   agent:
-    image: portainer/agent:1.1.2
+    image: portainer/agent
     environment:
       # REQUIRED: Should be equal to the service name prefixed by "tasks." when
       # deployed inside an overlay network
@@ -19,30 +19,33 @@ services:
     logging:
       driver: json-file
       options:
-        max-file: '3'
+        max-file: '1'
         max-size: '10m'
     deploy:
       mode: global
-      # placement:
-      #   constraints: [node.platform.os == linux]
-
+      placement:
+        constraints: [node.platform.os == linux]
   web:
-    image: portainer/portainer:1.19.2
+    image: portainer/portainer
     command: -H tcp://tasks.agent:9001 --tlsskipverify
     ports:
       - target: 9000
         published: 9000
         protocol: tcp
-        mode: host # host|ingress
+        mode: ingress # host|ingress
+      - target: 8000
+        published: 8000
+        protocol: tcp
+        mode: ingress
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - web_data:/data
+      - portainer_data:/data
     networks:
       - agent_network
     logging:
       driver: json-file
       options:
-        max-file: '3'
+        max-file: '1'
         max-size: '10m'
     deploy:
       mode: replicated
@@ -60,4 +63,4 @@ networks:
 
 
 volumes:
-  web_data:
+  portainer_data:

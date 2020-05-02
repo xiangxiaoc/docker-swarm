@@ -22,14 +22,22 @@ LOG_ABSOLUTE_PATH="${SCRIPT_ABSOLUTE_PATH}.log"
 
 # Output Color
 #CR='\e[0;31m'
-#CG='\e[0;32m'
+FR='\e[5;31m'
+CG='\e[0;32m'
 #CY='\e[0;33m'
-#CLB='\e[1;30m'
-#RC='\e[0m'
+STYLE_TITLE='\e[4;36m'
+RC='\e[0m'
 
-#################
-# Configuration #
-#################
+# Format Output
+
+function output_title() {
+    local title_name=$1
+    echo -e "$STYLE_TITLE$title_name\n$RC"
+}
+
+########################
+# Script Configuration #
+########################
 
 CONFIG_FILE=$SCRIPT_FILENAME.conf
 
@@ -39,15 +47,43 @@ function parse_config_file() {
     eval echo "$value"
 }
 
-docker_host_ip=""
-[ -z $docker_host_ip ] && docker_remote_arg="" || docker_remote_arg="-H ${docker_host_ip}:2375"
-[ -z $docker_host_ip ] && DOCKER_HOST="本机" || DOCKER_HOST="${docker_host_ip}:2375"
+docker_host_ip=$(parse_config_file docker_host_ip)
+[ -z "$docker_host_ip" ] && docker_remote_arg="" || docker_remote_arg="-H ${docker_host_ip}:2375"
+[ -z "$docker_host_ip" ] && docker_host_display="localhost(/var/run/docker.sock)" || docker_host_display="${docker_host_ip}:2375"
 # docker_stack_compose_dir=""
-docker_stack_compose_file="registry/swarm.yml"
-[ -f $docker_stack_compose_file ] && DOCKER_COMPOSE_FILE="$docker_stack_compose_file" || DOCKER_COMPOSE_FILE="$docker_stack_compose_file (不存在)"
-docker_stack_name="registry"
+compose_file=$(parse_config_file compose_file)
+[ -f "$compose_file" ] && compose_file_display="$compose_file" || compose_file_display="$compose_file $FR(not exist)$RC"
+docker_stack_name=$(parse_config_file stack_name)
 
 string_placeholders="#####"
+
+#############
+# Pre-check #
+#############
+
+[ $UID -ne 0 ] && echo "Only for root" && exit 0
+
+function is_stack_deployed() {
+    local input_stack=$1
+    stack_list=$(docker -H "$docker_host_ip" stack ls | sed -n '2,$ p' | awk '{print $1}')
+    is_deployed="Not deployed"
+    for stack in $stack_list; do
+        if [ "$stack" == "$input_stack" ]; then
+            is_deployed="${CG}Deployed${RC}"
+            break
+        fi
+    done
+}
+
+function get_stack_service_num() {
+    local input_stack=$1
+    is_stack_deployed "$input_stack"
+    if [ "$is_deployed" == "Not deployed" ]; then
+        echo "0"
+    else
+        docker -H "$docker_host_ip" stack ls | awk '{if($1=="'"$docker_stack_name"'")print $2}'
+    fi
+}
 
 ###################
 # Common Function #
@@ -82,103 +118,56 @@ $string_placeholders 集群部署脚本 $string_placeholders
 
 EOF_init
 
-    read -p "是否改变远程 Docker Host IP 地址？[y/N]:(默认 N) " cho
+    read -r -p "是否改变远程 Docker Host IP 地址？[y/N]:(默认 N) " cho
     if [[ -n $cho ]]; then
-        if [ $cho = 'y' ] || [ $cho = 'Y' ]; then
-            read -p "输入远程 Docker Host 的 IP 地址（输入空则控制本地 Docker 服务 ）： " docker_host_ip_new
-            sed -i "/^docker_host_ip/ c docker_host_ip=\"$docker_host_ip_new\"" $0
+        if [ "$cho" = 'y' ] || [ "$cho" = 'Y' ]; then
+            read -r -p "输入远程 Docker Host 的 IP 地址（输入空则控制本地 Docker 服务 ）： " docker_host_ip_new
+            sed -i "/^docker_host_ip/ c docker_host_ip=\"$docker_host_ip_new\"" "$CONFIG_FILE"
         fi
     fi
     echo
 
-    read -p "是否改变集群编排文件名？[y/N]:(默认 N) " cho
+    read -r -p "是否改变集群编排文件名？[y/N]:(默认 N) " cho
     if [[ -n $cho ]]; then
-        if [ $cho = 'y' ] || [ $cho = 'Y' ]; then
-            read -p "输入集群编排文件名： " docker_stack_compose_file_new
-            sed -i "/^docker_stack_compose_file/ c docker_stack_compose_file=\"$docker_stack_compose_file_new\"" $0
+        if [ "$cho" = 'y' ] || [ "$cho" = 'Y' ]; then
+            read -r -p "输入集群编排文件名： " docker_stack_compose_file_new
+            sed -i "/^docker_stack_compose_file/ c docker_stack_compose_file=\"$docker_stack_compose_file_new\"" "$CONFIG_FILE"
         fi
     fi
     echo
 
-    read -p "是否改变服务栈名称？[y/N]:(默认 N) " cho
-    if [ ! -z $cho ]; then
-        if [ $cho = 'y' ] || [ $cho = 'Y' ]; then
-            read -p "输入服务栈名称： " docker_stack_name_new
-            sed -i "/^docker_stack_name/ c docker_stack_name=\"$docker_stack_name_new\"" $0
+    read -r -p "是否改变服务栈名称？[y/N]:(默认 N) " cho
+    if [ -n "$cho" ]; then
+        if [ "$cho" = 'y' ] || [ "$cho" = 'Y' ]; then
+            read -r -p "输入服务栈名称： " docker_stack_name_new
+            sed -i "/^docker_stack_name/ c docker_stack_name=\"$docker_stack_name_new\"" "$CONFIG_FILE"
         fi
     fi
     echo
-
-    echo -e "初始化完成，即将根据 $([ -z $docker_stack_compose_file_new ] && echo $docker_stack_compose_file || echo $docker_stack_compose_file_new) 管理 $([ -z $docker_host_ip_new ] && echo $docker_host_ip || echo $docker_host_ip_new) $([ -z $docker_stack_name_new ] && echo $docker_stack_name || echo $docker_stack_name_new) 服务栈，请运行 $0 其他命令"
-
 }
 
-###########################
-# image manage entrypoint #
-###########################
-function docker_image_save() {
-    now_time=$(date "+%Y-%m-%d_%H")
-    mkdir ./images_bak_$now_time
-    for i in $(grep "image:" $docker_stack_compose_file | sed 's/#//' | awk '{print $2}' | sort -u); do
-        j=$(echo $i | sed "s/:/_/g;s/\//-/g")
-        docker $docker_remote_arg image save $i >./images_bak_$now_time/$j
-    done
-}
-
-function docker_image_load() {
-    case $1 in
-    "")
-        for i in ./images/*; do
-            docker $docker_remote_arg image load <./images/$i
-        done
-        ;;
-    $1)
-        for i in $1/*; do
-            docker $docker_remote_arg image load <./$1/$i
-        done
-        ;;
-    esac
-}
-
-###########################
-# docker stack entrypoint #
-###########################
-function docker_stack_port() {
-    yml_ports_line=$(sed -n "1,/ports:/=" $docker_stack_compose_file | sed -n '$ p')
-    yml_ports_value_line=$(($yml_ports_line + 1))
-    host_port=$(sed -n "${yml_ports_value_line}p" $docker_stack_compose_file)
-    case $1 in
-    "")
-        current_value=$(echo $host_port | cut -d ":" -f 1 | cut -d "\"" -f 2)
-        echo "当前端口为 $current_value，下次执行 $0 deploy 将使用此端口"
-        ;;
-    $1)
-        original_value=$(echo $host_port | cut -d ":" -f 1 | cut -d "\"" -f 2)
-        sed -i "$yml_ports_value_line s/$original_value/$1/" $docker_stack_compose_file &>/dev/null
-        [ $? -eq 0 ] && echo "已修改端口为 $1，再次执行 $0 deploy 生效"
-        ;;
-    esac
-}
-
+######################
+# Docker Stack Entry #
+######################
 function docker_stack_deploy() {
-    echo -e "读取部署编排文件 ./$docker_stack_compose_file \n开始部署服务集群 ... "
-    docker $docker_remote_arg stack deploy --compose-file $docker_stack_compose_file $docker_stack_name --resolve-image=never
+    echo -e "读取部署编排文件 ./$compose_file \n开始部署服务集群 ... "
+    docker "$docker_remote_arg" stack deploy --compose-file "$compose_file" "$docker_stack_name" --resolve-image=never
 
 }
 
 function docker_stack_services() {
     watch -n 1 \
-    docker $docker_remote_arg stack services $docker_stack_name "$@"
+    docker "$docker_remote_arg" stack services "$docker_stack_name" "$@"
 }
 
-#############################
-# docker service entrypoint #
-#############################
+########################
+# Docker Service Entry #
+########################
 function docker_service_choose() {
     declare -A list
     i=0
     echo -e "序号  服务\n----------"
-    for docker_service_name in $(docker $docker_remote_arg stack services $docker_stack_name | grep -v NAME | awk '{print $2}' | sort -n); do
+    for docker_service_name in $(docker "$docker_remote_arg" stack services "$docker_stack_name" | grep -v NAME | awk '{print $2}' | sort -n); do
         i=$((i + 1))
         if [ $i -lt 10 ]; then
             j=' '$i
@@ -189,7 +178,7 @@ function docker_service_choose() {
         list[$i]=$docker_service_name
     done
     echo
-    read -p "选择服务，输入其序号，按回车执行： " cho
+    read -r -p "选择服务，输入其序号，按回车执行： " cho
     docker_service_choice=${list[$cho]}
     echo
 }
@@ -199,11 +188,11 @@ function docker_service_ps() {
     "")
         docker_service_choose
         watch -n 1 \
-        docker $docker_remote_arg service ps --no-trunc $docker_service_choice
+        docker "$docker_remote_arg" service ps --no-trunc "$docker_service_choice"
         ;;
     "-a")
         watch -n 1 \
-        docker $docker_remote_arg stack ps --no-trunc $docker_stack_name
+        docker "$docker_remote_arg" stack ps --no-trunc "$docker_stack_name"
         ;;
     esac
 }
@@ -213,14 +202,14 @@ function docker_service_remove() {
     "")
         docker_service_choose
         echo -e "\n开始移除服务..."
-        docker $docker_remote_arg service rm $docker_service_choice
+        docker "$docker_remote_arg" service rm "$docker_service_choice"
         ;;
     -a)
-        read -p "确定移除 $docker_stack_name 服务栈?[y/N]: " cho
-        if [ ! -z "$cho" ]; then
-            if [ $cho = 'y' ] || [ $cho = 'Y' ]; then
+        read -r -p "确定移除 $docker_stack_name 服务栈?[y/N]: " cho
+        if [ -n "$cho" ]; then
+            if [ "$cho" = 'y' ] || [ "$cho" = 'Y' ]; then
                 echo -e "\n开始移除服务..."
-                docker $docker_remote_arg stack rm $docker_stack_name
+                docker "$docker_remote_arg" stack rm "$docker_stack_name"
             else
                 exit 0
             fi
@@ -237,7 +226,7 @@ function docker_service_remove() {
         printf "\b"
         printf "="
         printf ">"
-        i=$(($i + 1))
+        i=$((i + 1))
     done
     echo " ]"
     echo "移除完成"
@@ -246,20 +235,20 @@ function docker_service_remove() {
 function docker_service_update() {
     docker_service_choose
     echo -e "开始更新服务...\n"
-    docker $docker_remote_arg service update --force $docker_service_choice "$@"
+    docker "$docker_remote_arg" service update --force "$docker_service_choice" "$@"
 }
 
 function docker_service_logs() {
     docker_service_choose
-    read -p "要查询多久前到现在日志？  (单位：分钟 默认：全部日志)： " time_to_now
-    [ -z $time_to_now ] && since_arg="" || since_arg="--since ${time_to_now}m"
+    read -r -p "要查询多久前到现在日志？  (单位：分钟 默认：全部日志)： " time_to_now
+    [ -z "$time_to_now" ] && since_arg="" || since_arg="--since ${time_to_now}m"
     echo
-    read -p "打印预览或下载到当前目录？  [ 1 预览 | 2 下载 ]（默认：1 预览）： " download_cho
-    [ -z $download_cho ] && download_cho="1" || download_cho=$download_cho
+    read -r -p "打印预览或下载到当前目录？  [ 1 预览 | 2 下载 ]（默认：1 预览）： " download_cho
+    [ -z "$download_cho" ] && download_cho="1" || download_cho=$download_cho
     echo
     case $download_cho in
     1)
-        docker $docker_remote_arg service logs -f $since_arg $docker_service_choice
+        docker "$docker_remote_arg" service logs -f "$since_arg" "$docker_service_choice"
         ;;
     2)
         if [ -z "${time_to_now}" ]; then
@@ -268,21 +257,21 @@ function docker_service_logs() {
             log_cover_time="$(date -d "-${time_to_now}minutes" "+%m月%d日_%H时%M分%S秒")_to_$(date "+%H时%M分%S秒")"
         fi
         log_filename="${docker_service_choice}_${log_cover_time}.log"
-        docker $docker_remote_arg service logs $since_arg $docker_service_choice &>${log_filename}
+        docker "$docker_remote_arg" service logs "$since_arg" "$docker_service_choice" &>"$log_filename"
         echo "下载完成"
         ;;
     esac
 }
-############################
-# docker config entrypoint #
-############################
+#######################
+# Docker Config Entry #
+#######################
 function docker_config() {
-    docker $docker_remote_arg config "$@"
+    docker "$docker_remote_arg" config "$@"
 }
 
-###################
-# help entrypoint #
-###################
+##############
+# Help Entry #
+##############
 function show_help() {
     cat <<EOF_help
 Docker stack deploy script , version: 1.3.4 , build: 2018-09-17 16:46:32
@@ -306,20 +295,54 @@ Commands:
   -h, --help        显示此帮助页
 
 # 以下是目标 Docker 主机地址和正在使用的编排文件，如需变更执行 $0 init 进行初始化
-Docker Daemon: $DOCKER_HOST
-Compose File: $DOCKER_COMPOSE_FILE
+Docker Daemon: $docker_host_display
+Compose File: $compose_file_display
 Swarm Stack Name: $docker_stack_name
 
 EOF_help
 }
 
-###################
-# main entrypoint #
-###################
+##############
+# Main Entry #
+##############
+
+function interactive_menu() {
+    is_stack_deployed "$docker_stack_name"
+    cat <<EOF_menu
+$(output_title "Configuration and Status")
+Docker Daemon: $docker_host_display
+ Compose File: $(echo -e "$compose_file_display")
+        Stack: $docker_stack_name(Status: $(echo -e "$is_deployed"); Services: $(get_stack_service_num "$docker_stack_name"))
+
+$(output_title "Available Actions")
+0. reconfigure          更改本机或远端的 Docker 服务器或编排组
+1. list images          查看 docker daemon 的镜像
+2. list stacks          列出所有 stack
+3. view logs            查看当前编排组容器日志
+4. bash/sh in container 进入容器运行用 bash/sh 进行交互
+5. compose up           创建并运行当前编排组
+6. compose down         停止并删除当前编排组
+
+EOF_menu
+    read -r -p "选择功能，输入其序号: " cho
+    case $cho in
+    '0') reconfigure ;;
+    '1') docker_image_ls ;;
+    '2') docker_service_ps ;;
+    '3') docker_compose_logs ;;
+    '4') docker_compose_bash ;;
+    '5') docker_compose_up ;;
+    '6') docker_compose_down ;;
+    esac
+}
+
 function main() {
     main_command=$1
     shift
     case $main_command in
+    '')
+        interactive_menu
+        ;;
     -h)
         show_help
         exit 0
@@ -327,6 +350,9 @@ function main() {
     --help)
         show_help
         exit 0
+        ;;
+    version)
+        get_script_version
         ;;
     init)
         script_init
