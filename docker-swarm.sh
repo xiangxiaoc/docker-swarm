@@ -7,8 +7,8 @@
 #########################
 
 SCRIPT_VERSION='v1'
-SCRIPT_UPDATE_DATE='2020-3-11'
-SCRIPT_UPDATE_TIME='22:03'
+SCRIPT_UPDATE_DATE='2020-05-03'
+SCRIPT_UPDATE_TIME='19:08'
 SCRIPT_UPDATE_TZ='UTC+8'
 
 # File and Directory Path
@@ -47,13 +47,11 @@ function parse_config_file() {
     eval echo "$value"
 }
 
-docker_host_ip=$(parse_config_file docker_host_ip)
-[ -z "$docker_host_ip" ] && docker_remote_arg="" || docker_remote_arg="-H ${docker_host_ip}:2375"
-[ -z "$docker_host_ip" ] && docker_host_display="localhost(/var/run/docker.sock)" || docker_host_display="${docker_host_ip}:2375"
 docker_daemon_host=$(parse_config_file docker_daemon_host)
 docker_daemon_port=$(parse_config_file docker_daemon_port)
 if [ -z "$docker_daemon_host" ]; then
     remote_docker_daemon=""
+    docker_host_display="localhost(/var/run/docker.sock)"
 else
     [ -z "$docker_daemon_port" ] && docker_daemon_port="2375"
     remote_docker_daemon="$docker_daemon_host":"$docker_daemon_port"
@@ -68,9 +66,28 @@ docker_stack_name=$(parse_config_file stack_name)
 
 [ $UID -ne 0 ] && echo "Only for root" && exit 0
 
+function check_swarm_mode() {
+    [ -d data ] || mkdir data
+    if docker -H "$remote_docker_daemon" swarm join-token worker >data/join_token.txt 2>/dev/null; then
+        :
+    else
+        echo -e "${CY}Swarm mode is inactive. The stack can only be deployed if swarm mode is active.$RC"
+        read -r -p "Enable swarm mode? [y/n](default: y): " anwser
+        case $anwser in
+        "" | y)
+            docker -H "$remote_docker_daemon" swarm init
+            ;;
+        *)
+            echo -e "See you!"
+            exit 0
+            ;;
+        esac
+    fi
+}
+
 function is_stack_deployed() {
     local input_stack=$1
-    stack_list=$(docker -H "$docker_host_ip" stack ls | sed -n '2,$ p' | awk '{print $1}')
+    stack_list=$(docker -H "$remote_docker_daemon" stack ls | sed -n '2,$ p' | awk '{print $1}')
     is_deployed="Not deployed"
     for stack in $stack_list; do
         if [ "$stack" == "$input_stack" ]; then
@@ -115,6 +132,10 @@ function locate_function_error() {
 ######################
 # Docker Stack Entry #
 ######################
+function list_stacks() {
+    docker -H "$remote_docker_daemon" stack ls
+}
+
 function docker_stack_deploy() {
     docker -H "$remote_docker_daemon" stack deploy --compose-file "$compose_file" --resolve-image=changed "$docker_stack_name"
 }
@@ -137,7 +158,7 @@ function docker_service_choose() {
     declare -A list
     i=0
     echo -e "Num   Service\n---   -------"
-    service_list=$(docker -H "$docker_remote_arg" stack services --format "{{.Name}}" "$docker_stack_name" | sort -n)
+    service_list=$(docker -H "$remote_docker_daemon" stack services --format "{{.Name}}" "$docker_stack_name" | sort -n)
     for docker_service_name in $service_list; do
         i=$((i + 1))
         if [ $i -lt 10 ]; then
@@ -149,7 +170,7 @@ function docker_service_choose() {
         list[$i]=$docker_service_name
     done
     echo
-    read -r -p "type the num to select the service, press Enter: " cho
+    read -r -p "Type the num to select the service, press Enter: " cho
     docker_service_choice=${list[$cho]}
     echo
 }
@@ -194,7 +215,7 @@ function docker_service_remove() {
 
 function docker_service_update() {
     docker_service_choose
-    docker "$docker_remote_arg" service update --force "$docker_service_choice" "$@"
+    docker "$remote_docker_daemon" service update --force "$docker_service_choice" "$@"
 }
 
 function view_service_logs() {
@@ -220,7 +241,8 @@ function view_service_logs() {
             log_cover_time="$(date -d "-${time_to_now/m/}minutes" "+%Y%m%d_%H%M%S")_to_$(date "+%Y%m%d_%H%M%S")"
         fi
         log_filename="${docker_service_choice}_${log_cover_time}.log"
-        docker -H "$remote_docker_daemon" service logs --since "${time_to_now}" "$docker_service_choice" &>"$log_filename"
+        [ -d log ] || mkdir log
+        docker -H "$remote_docker_daemon" service logs --since "${time_to_now}" "$docker_service_choice" &>log/"$log_filename"
         ;;
     esac
 }
@@ -228,7 +250,7 @@ function view_service_logs() {
 # Docker Config Entry #
 #######################
 function docker_config() {
-    docker "$docker_remote_arg" config "$@"
+    docker "$remote_docker_daemon" config "$@"
 }
 
 ##############
@@ -258,20 +280,22 @@ Docker Daemon: $docker_host_display
         Stack: $docker_stack_name(Status: $(echo -e "$is_deployed"); Services: $(get_stack_service_num "$docker_stack_name"))
 
 $(output_title "Available Actions")
-1. Deploy the stack from the compose file
-2. List services of the stack
-3. List tasks(containers) of the stack
-4. View logs of service
-5. Remove the stack or a service
+0. List all deployed stacks in the docker daemon
+1. Deploy the stack according to the specified compose file
+2. List the services of $docker_stack_name
+3. List the tasks (containers) of $docker_stack_name
+4. View service logs of $docker_stack_name
+5. Remove the stack or service of $docker_stack_name
 
 EOF_menu
-    read -r -p "select an action, type the num: " cho
+    read -r -p "Type the num to select an action: " cho
     case $cho in
-    '1') docker_stack_deploy ;;
-    '2') list_services ;;
-    '3') list_tasks ;;
-    '4') view_service_logs ;;
-    '5') docker_service_remove ;;
+    0) list_stacks ;;
+    1) docker_stack_deploy ;;
+    2) list_services ;;
+    3) list_tasks ;;
+    4) view_service_logs ;;
+    5) docker_service_remove ;;
     *) return ;;
     esac
 }
@@ -281,6 +305,7 @@ function main() {
     shift
     case $main_command in
     '')
+        check_swarm_mode
         interactive_menu
         ;;
     version)
