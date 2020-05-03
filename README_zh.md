@@ -1,3 +1,5 @@
+[English README](README.md)
+
 # 概述
 
 Docker Swarm 是 Docker 官方的集群编排方案。已经集成在 > 1.12 的 docker 版本里了。当然默认是未启用状态，启用一下也就是一条命令的事，下面提到的脚本也支持与 `docker swarm` 命令相关的集群管理操作。 
@@ -17,3 +19,8 @@ Docker Swarm 是 Docker 官方的集群编排方案。已经集成在 > 1.12 的
 
 参阅详细的服务配置：
 https://docs.docker.com/compose/compose-file/compose-versioning/#compatibility-matrix
+
+## Docker 官方文档
+
+关于 `docker stack` 命令:
+https://docs.docker.com/engine/reference/commandline/stack/
