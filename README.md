@@ -6,20 +6,19 @@
 
 ## Overview
 
-Docker Swarm is Docker's official cluster orchestration solution. It has been integrated in the docker version> 1.12. Of course, it is not enabled by default. It is a command to enable it. The script mentioned below also supports cluster management operations related to the `docker swarm` command.
+Docker Swarm is Docker's official cluster orchestration solution. Compared with Kubernetes, it is very lightweight. Although Kubernetes is currently mainstream, it is also good to know. Swarm has been integrated in the docker version> 1.12. Of course, the default is not enabled, the script mentioned below will automatically detect and confirm that it is enabled.
 
-Here are some tested containerized service orchestration projects. Docker refers to a group of Services as a stack. So orchestrating a project is to create a Stack containing multiple Services. Services is also a front-end concept abstracted by Docker. The back-end can have multiple Containers to provide actual services to handle front-end requests.
+Docker refers to a set of Services as a stack. So orchestrating a project is to create a Stack containing multiple Services. Services is a front-end concept abstracted by Docker. The back-end can have multiple Tasks (actually Containers) to provide actual services and process requests.
 
-Basically follow the "coding once, run everywhere" advocated by Docker. Veterans familiar with the `docker stack` command can directly access the required YAML files. Relevant notes, if any, will be supplemented with explanations in their corresponding catalogs.
+Follow the "coding once, run everywhere" advocated by Docker. Veterans familiar with the `docker stack` command can directly access the required YAML files. Relevant precautions, if any, will be supplemented in the corresponding catalog.
 
 ## docker-swarm.sh script
 
-This project provides a shell script that implements common operations through interaction. It is very suitable to quickly experience Docker's official container cluster orchestration solution.
-
+This project provides a shell script that implements common operations through interaction, which means that you can quickly deploy and view logs without checking commands. It is very suitable to quickly experience Docker's official container cluster orchestration solution.
 
 ## Compose File format
 
-Yes, orchestration can be arranged based on a Compose file. However, the format versions of Compose files are all above 3.x, which is necessary for deploying containers in Swarm Mode. The change from upgrading to 3.x compared to 2.x is mainly the addition of `deploy:` configuration option.
+Yes, it can be arranged based on a Compose file, similar to docker-compose. However, the format versions of Compose files required by Swarm are all above 3.x, which is necessary for deploying Services in Swarm Mode. The change of 3.x compared to 2.x is mainly the addition of `deploy:` configuration options to achieve more deployment requirements.
 
 See detailed service configuration:
 https://docs.docker.com/compose/compose-file/compose-versioning/#compatibility-matrix
