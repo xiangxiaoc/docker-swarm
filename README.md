@@ -1,4 +1,4 @@
-# Docker Swarm Experience
+# Quickly experience Docker Swarm
 
 [中文版 README](README_zh.md)
 
