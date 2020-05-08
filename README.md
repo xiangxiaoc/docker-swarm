@@ -20,6 +20,42 @@ This project provides a shell script that implements common operations through i
 
 Yes, it can be arranged based on a Compose file, similar to docker-compose. However, the format versions of Compose files required by Swarm are all above 3.x, which is necessary for deploying Services in Swarm Mode. The change of 3.x compared to 2.x is mainly the addition of `deploy:` configuration options to achieve more deployment requirements.
 
+```
+version: "3.8"
+services:
+  proxy:
+    image: nginx
+    port:
+    - target: 80
+      published: 8080
+      protocol: tcp
+      mode: ingress # host|ingress
+    deploy:
+      labels:
+        app: "proxy"
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 50M
+        reservations:
+          cpus: '0.25'
+          memory: 20M
+      mode: replicated
+      replicas: 5
+      max_replicas_per_node: 2
+      update_config:
+        parallelism: 2
+        delay: 10s
+      rollback_config:
+        parallelism: 2
+        delay: 0s
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints:
+          - "node.role==manager"
+```
+
 See detailed service configuration:
 https://docs.docker.com/compose/compose-file/compose-versioning/#compatibility-matrix
 
